@@ -148,7 +148,7 @@ export function createApp({ config, db, sender, scheduler, logger, now = Date.no
     res.json({ ok: true });
   });
 
-  // Sender errors here are user-facing ("already linked", "not supported in desktop mode").
+  // Sender errors here are user-facing ("already linked", "not ready to link yet").
   const senderAction = (fn) => route(async (req, res) => {
     try {
       res.json(await fn(req));

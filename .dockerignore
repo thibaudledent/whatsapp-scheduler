@@ -4,5 +4,3 @@ test
 .env
 .claude
 *.md
-start.bat
-scripts

@@ -17,7 +17,7 @@ with a web UI.
 ```
 git clone https://github.com/0xByteRush/whatsapp-scheduler.git
 cd whatsapp-scheduler
-cp .env.example .env        # Windows: copy .env.example .env, then edit it
+cp .env.example .env
 npm install
 npm start
 ```
@@ -29,15 +29,11 @@ Requires Node.js 22.13 or newer (SQLite is built in, so there are no native modu
 
 ## How it sends
 
-| `SENDER` | How | Works while PC is locked / headless | Groups | Receipts |
+| `SENDER` | How | Works headless | Groups | Receipts |
 |---|---|---|---|---|
 | `baileys` (default) | Its own linked-device session over WhatsApp's protocol ([Baileys](https://github.com/WhiskeySockets/Baileys)) | Yes | Yes | Delivered / read |
-| `desktop` (Windows fallback) | Opens `whatsapp://send` in the WhatsApp Desktop app you're signed into and presses Enter | No, Windows must be unlocked | No | No |
 
-Use `desktop` only if you can't link a new device (for example, WhatsApp says *"Can't link new
-devices now"*, which usually clears within a day).
-
-There is no official WhatsApp API for personal numbers. Both modes are unofficial, so keep
+There is no official WhatsApp API for personal numbers. It's unofficial, so keep
 usage personal and low-volume. The pacing and daily-limit settings exist to keep your number
 in good standing.
 
@@ -76,12 +72,6 @@ Set `ALERT_NTFY_URL` to an [ntfy](https://ntfy.sh) topic URL, for example
 push when WhatsApp disconnects or unlinks, or when a message fails or is missed.
 
 ## Running it permanently
-
-**Windows, at sign-in (restarts on crash):**
-```
-powershell -ExecutionPolicy Bypass -File scripts\windows-autostart.ps1
-```
-Logs go to `data\scheduler.log`. Remove the task with `-Remove`.
 
 **Docker (VPS, NAS or home server):**
 ```
