@@ -72,10 +72,32 @@ function toMessage(row) {
 // node:sqlite rejects undefined and booleans; normalize before binding.
 const bind = (v) => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v);
 
+// The database holds WhatsApp session keys and the cookie secret: owner-only access.
+// SQLite creates -wal/-shm with the main file's mode, so later ones inherit 0600.
+const restrictPermissions = process.platform !== 'win32';
+
+function secureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (restrictPermissions && (fs.statSync(dir).mode & 0o077) !== 0) fs.chmodSync(dir, 0o700);
+}
+
+function secureFiles(file) {
+  if (!restrictPermissions) return;
+  for (const f of [file, `${file}-wal`, `${file}-shm`]) {
+    try {
+      fs.chmodSync(f, 0o600);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+  }
+}
+
 export function openDb(file, { now = Date.now } = {}) {
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
+  const onDisk = file !== ':memory:';
+  if (onDisk) secureDir(path.dirname(file));
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  if (onDisk) secureFiles(file);
 
   let depth = 0;
   // Nested calls join the outer transaction.

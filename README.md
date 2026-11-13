@@ -68,6 +68,8 @@ in good standing.
   are rejected. Add your domain to `ALLOWED_HOSTS`.
 - Security headers via helmet (CSP and others). Secrets live only in `.env` and the
   database, never in the repo.
+- The data directory is created `0700` and `scheduler.db` (plus its `-wal`/`-shm` files) `0600`;
+  looser permissions are tightened on startup. The database is not encrypted.
 
 ## Alerts
 
