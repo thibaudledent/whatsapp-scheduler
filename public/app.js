@@ -131,20 +131,26 @@ const phoneSuggestion = (q) => {
   return { to: digits, toName: `+${digits}`, kind: 'Phone number' };
 };
 
+// "33612345678@s.whatsapp.net" -> "+33612345678"; groups and @lid ids have no number to show.
+const jidNumber = (jid) => (jid.endsWith('@s.whatsapp.net') ? `+${jid.split('@')[0]}` : '');
+
 let searchSeq = 0;
 async function updateSuggestions() {
   const q = $('to').value;
   const seq = ++searchSeq;
-  const list = looksLikePhone(q) ? [phoneSuggestion(q)] : [];
-  if (q.trim() && !looksLikePhone(q)) {
-    try {
-      const found = await api(`/api/contacts?q=${encodeURIComponent(q.trim())}`);
-      if (seq !== searchSeq) return; // a newer keystroke won
-      for (const c of found) list.push({ to: c.jid, toName: c.name, kind: c.isGroup ? 'Group' : 'Contact' });
-    } catch {
-      // keep phone suggestion only
+  const list = [];
+  // Matching contacts first (an empty box lists recent ones), then "send to this number" last.
+  try {
+    const found = await api(`/api/contacts?q=${encodeURIComponent(q.trim())}`);
+    if (seq !== searchSeq) return; // a newer keystroke won
+    for (const c of found) {
+      list.push({ to: c.jid, toName: c.name, number: jidNumber(c.jid), kind: c.isGroup ? 'Group' : 'Contact' });
     }
+  } catch {
+    // fall back to the phone suggestion only
   }
+  if (seq !== searchSeq) return;
+  if (looksLikePhone(q)) list.push(phoneSuggestion(q));
   suggestions = list;
   activeSuggestion = list.length ? 0 : -1;
   renderSuggestions();
@@ -157,12 +163,21 @@ function renderSuggestions() {
     const li = document.createElement('li');
     li.setAttribute('role', 'option');
     li.className = i === activeSuggestion ? 'active' : '';
+    const label = document.createElement('span');
     const name = document.createElement('span');
     name.textContent = s.toName;
+    label.append(name);
+    // The number tells apart two contacts with the same name; skip it when it is the name.
+    if (s.number && s.number !== s.toName) {
+      const number = document.createElement('span');
+      number.className = 'number';
+      number.textContent = s.number;
+      label.append(' ', number);
+    }
     const kind = document.createElement('span');
     kind.className = 'kind';
     kind.textContent = s.kind;
-    li.append(name, kind);
+    li.append(label, kind);
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
       pick(s);
@@ -203,7 +218,7 @@ $('to').addEventListener('input', () => {
   debounce = setTimeout(updateSuggestions, 150);
 });
 $('to').addEventListener('blur', () => ($('suggestions').hidden = true));
-$('to').addEventListener('focus', renderSuggestions);
+$('to').addEventListener('focus', updateSuggestions);
 $('to').addEventListener('keydown', (e) => {
   if (!suggestions.length) return;
   if (e.key === 'ArrowDown') activeSuggestion = Math.min(activeSuggestion + 1, suggestions.length - 1);

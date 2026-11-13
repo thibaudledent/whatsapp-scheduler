@@ -87,6 +87,18 @@ function toMessage(row) {
 }
 
 // node:sqlite rejects undefined and booleans; normalize before binding.
+const toContactHit = (r) => ({ jid: r.jid, name: r.name, isGroup: r.is_group === 1 });
+
+// Substring LIKE pattern; % _ and \ in the input match themselves.
+const likePattern = (text) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+// "+33 6 12", "0033-612", "(612) 345" -> "33612", "33612", "612345"; null if it isn't a number.
+function phoneDigits(text) {
+  if (!/^[\d\s+().-]+$/.test(text)) return null;
+  const digits = text.replace(/\D/g, '').replace(/^00/, '');
+  return digits || null;
+}
+
 // Absent, null and blank names all mean "this event does not carry that name".
 const cleanName = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
@@ -173,10 +185,17 @@ export function openDb(file, { now = Date.now } = {}) {
         business_name = COALESCE(excluded.business_name, contacts.business_name),
         is_group = excluded.is_group, updated_at = excluded.updated_at`),
     contactGet: db.prepare('SELECT * FROM contacts WHERE jid = ?'),
+    // :digits is NULL unless the query looks like a phone number; it only matches the number
+    // part of phone-number jids (never @lid or group ids, whose digits mean nothing to a user).
     contactSearch: db.prepare(`SELECT jid, name, is_group FROM contacts
       WHERE name LIKE :q ESCAPE '\\' OR saved_name LIKE :q ESCAPE '\\'
          OR notify_name LIKE :q ESCAPE '\\' OR business_name LIKE :q ESCAPE '\\'
+         OR (:digits IS NOT NULL AND jid LIKE '%@s.whatsapp.net'
+             AND substr(jid, 1, instr(jid, '@') - 1) LIKE :digits ESCAPE '\\')
       ORDER BY is_group, name LIMIT :limit`),
+    // People first (newest first); groups only fill the slots people leave free.
+    contactRecent: db.prepare(`SELECT jid, name, is_group FROM contacts
+      ORDER BY is_group, updated_at DESC, jid LIMIT :limit`),
     authGet: db.prepare('SELECT value FROM auth_kv WHERE key = ?'),
     authSet: db.prepare('INSERT INTO auth_kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value'),
     authDel: db.prepare('DELETE FROM auth_kv WHERE key = ?'),
@@ -259,9 +278,14 @@ export function openDb(file, { now = Date.now } = {}) {
         businessName: row.business_name,
       };
     },
+    // An empty query lists the most recently updated contacts.
     search(query, limit = 30) {
-      const q = `%${String(query).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      return stmt.contactSearch.all({ q, limit }).map((r) => ({ jid: r.jid, name: r.name, isGroup: r.is_group === 1 }));
+      const text = String(query ?? '').trim();
+      if (!text) return stmt.contactRecent.all({ limit }).map(toContactHit);
+      const digits = phoneDigits(text);
+      return stmt.contactSearch
+        .all({ q: likePattern(text), digits: digits && likePattern(digits), limit })
+        .map(toContactHit);
     },
   };
 

@@ -111,8 +111,8 @@ export function createApp({ config, db, sender, scheduler, logger, now = Date.no
   });
 
   app.get('/api/contacts', (req, res) => {
-    const q = String(req.query.q || '').trim();
-    res.json(q ? db.contacts.search(q, 30) : []);
+    // An empty query lists recent contacts so the picker shows something on focus.
+    res.json(db.contacts.search(String(req.query.q ?? ''), 30));
   });
 
   app.get('/api/messages', (req, res) => {
