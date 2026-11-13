@@ -132,7 +132,8 @@ export function createApp({ config, db, sender, scheduler, logger, now = Date.no
     if (!m) return res.status(404).json({ error: 'Not found.' });
     if (m.status !== 'pending') throw new BadRequest('Only pending messages can be edited.');
     const fields = await parseMessage(req.body);
-    res.json(toApi(db.messages.update(m.id, { ...fields, retryAt: null, attempts: 0, error: null })));
+    // An edited message is a new message: send it under a fresh WhatsApp id.
+    res.json(toApi(db.messages.update(m.id, { ...fields, retryAt: null, attempts: 0, error: null, waId: null })));
   }));
 
   app.post('/api/messages/:id/send-now', route(async (req, res) => {

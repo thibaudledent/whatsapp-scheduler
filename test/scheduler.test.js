@@ -114,6 +114,28 @@ test('a retry that succeeds ends up sent', async () => {
   assert.equal(db.messages.get(m.id).status, 'sent');
 });
 
+test('a retry after an ambiguous failure reuses the same WhatsApp message id', async () => {
+  const m = schedule();
+  const offeredIds = [];
+  const realSend = sender.send.bind(sender);
+  sender.send = async (jid, text, opts = {}) => {
+    offeredIds.push(opts.messageId);
+    return realSend(jid, text, opts);
+  };
+
+  sender.failWith = new Error('timed out'); // WhatsApp may still have accepted it
+  await scheduler.tick();
+  sender.failWith = null;
+  clock.advance(MIN);
+  await scheduler.tick();
+
+  assert.equal(db.messages.get(m.id).status, 'sent');
+  assert.equal(offeredIds.length, 2);
+  assert.ok(offeredIds[0]);
+  assert.equal(offeredIds[1], offeredIds[0]);
+  assert.equal(db.messages.get(m.id).waId, offeredIds[0]);
+});
+
 test('permanent errors are not retried', async () => {
   const m = schedule();
   sender.failWith = new PermanentError('not on WhatsApp');
@@ -181,6 +203,23 @@ test('send now works for failed messages and does not auto-retry', async () => {
   sender.failWith = null;
   const after = await scheduler.sendNow(m.id);
   assert.equal(after.status, 'sent');
+});
+
+test('send now goes out under a fresh WhatsApp id, not the failed attempt\'s', async () => {
+  setup({ maxAttempts: 1 });
+  const m = schedule();
+  sender.failWith = new Error('timed out');
+  await scheduler.tick();
+  const failed = db.messages.get(m.id);
+  assert.equal(failed.status, 'failed');
+  assert.ok(failed.waId);
+
+  sender.failWith = null;
+  const after = await scheduler.sendNow(m.id);
+  assert.equal(after.status, 'sent');
+  assert.equal(sender.sent.length, 1);
+  assert.notEqual(sender.sent[0].messageId, failed.waId);
+  assert.equal(after.waId, sender.sent[0].messageId);
 });
 
 test('send now refuses messages already sent', async () => {
