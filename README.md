@@ -106,10 +106,19 @@ npm test
 ```
 Tests cover recurrence and DST, the job engine (no double sends, retries, missed messages,
 repeats, crash recovery, daily limit) and the HTTP API (auth, CSRF, host check,
-validation).
+validation) and contact names (including the database migration).
 
 ## Data
 
 Everything is in `data/scheduler.db`: messages, contacts and the WhatsApp session. Treat it
 like a password. Messages from the old `messages.json` are imported automatically on first
 start.
+
+For each contact the app keeps only its jid and up to three names: the name saved in your
+phone's address book, the person's WhatsApp profile name and a verified business name. It
+shows them in that order of preference, falling back to `+<phone number>`. An update that
+carries only one of these names never clears the others.
+
+**Known limitation:** WhatsApp sometimes identifies a person by a private ID (`…@lid`)
+instead of their phone number. The app does not link the two yet, so the same person can
+appear twice in contact search, once by phone number and once by private ID.
