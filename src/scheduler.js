@@ -96,8 +96,13 @@ export class Scheduler {
 
   // m must already be claimed (status 'sending').
   async deliver(m) {
-    const waId = this.sender.newMessageId();
-    if (waId) this.db.messages.update(m.id, { waId });
+    // Reuse the id from an earlier attempt: if that attempt actually reached WhatsApp,
+    // a retry under the same id is at least recognisable as the same message.
+    let waId = m.waId;
+    if (!waId) {
+      waId = this.sender.newMessageId();
+      if (waId) this.db.messages.update(m.id, { waId });
+    }
     try {
       const sentId = await this.sender.send(m.to, m.body, { messageId: waId });
       this.lastSendAt = this.now();

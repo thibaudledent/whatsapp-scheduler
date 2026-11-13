@@ -43,10 +43,14 @@ in good standing.
 
 ## Reliability
 
-- **Durable queue (SQLite, WAL).** Each message is claimed atomically before it's sent, so it
-  can never be sent twice.
+- **Durable queue (SQLite, WAL).** Each message is claimed atomically before it's sent, so the
+  scheduler never sends the same message from two places at once.
 - **Retries.** Failed sends retry after 1, 5, then 15 minutes, up to `MAX_ATTEMPTS`. Final
-  failures raise an alert.
+  failures raise an alert. A retry reuses the original WhatsApp message id. That does **not**
+  guarantee no duplicates: if a send timed out but WhatsApp had actually accepted it, the retry
+  goes out again under the same id, and whether WhatsApp then shows it once or twice is up to
+  WhatsApp's servers and apps. Neither this project nor Baileys checks for it. Set
+  `MAX_ATTEMPTS=1` if a possible duplicate is worse than a missed message.
 - **Crash safety.** A message that was mid-send when the process died is marked *failed*
   ("check WhatsApp"), never silently re-sent. If WhatsApp had already acknowledged it, it's
   marked *sent*.
