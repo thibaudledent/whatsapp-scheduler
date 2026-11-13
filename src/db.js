@@ -36,6 +36,23 @@ const MIGRATIONS = [
    );
    CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // v2: keep the address-book name, the WhatsApp profile name and the business name apart.
+  // Version 1 stored one collapsed name; it becomes the saved name so a contact named "Marie"
+  // is not replaced by her profile name. `name` is the display name, derived in one place.
+  `CREATE TABLE contacts_v2 (
+     jid           TEXT PRIMARY KEY,
+     saved_name    TEXT,
+     notify_name   TEXT,
+     business_name TEXT,
+     is_group      INTEGER NOT NULL DEFAULT 0,
+     updated_at    INTEGER NOT NULL,
+     name          TEXT GENERATED ALWAYS AS (COALESCE(saved_name, notify_name, business_name,
+                     '+' || substr(jid, 1, instr(jid, '@') - 1))) VIRTUAL
+   );
+   INSERT INTO contacts_v2 (jid, saved_name, is_group, updated_at)
+     SELECT jid, name, is_group, updated_at FROM contacts;
+   DROP TABLE contacts;
+   ALTER TABLE contacts_v2 RENAME TO contacts;`,
 ];
 
 const COLUMNS = {
@@ -70,6 +87,9 @@ function toMessage(row) {
 }
 
 // node:sqlite rejects undefined and booleans; normalize before binding.
+// Absent, null and blank names all mean "this event does not carry that name".
+const cleanName = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
 const bind = (v) => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v);
 
 // The database holds WhatsApp session keys and the cookie secret: owner-only access.
@@ -144,10 +164,19 @@ export function openDb(file, { now = Date.now } = {}) {
     pendingCount: db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE status = 'pending'`),
     interrupted: db.prepare(`SELECT * FROM messages WHERE status = 'sending'`),
     ack: db.prepare('UPDATE messages SET ack = MAX(COALESCE(ack, 0), ?), updated_at = ? WHERE wa_id = ?'),
-    contactUpsert: db.prepare(`INSERT INTO contacts (jid, name, is_group, updated_at) VALUES (?, ?, ?, ?)
-      ON CONFLICT (jid) DO UPDATE SET name = excluded.name, is_group = excluded.is_group, updated_at = excluded.updated_at`),
+    // A field the event does not carry (NULL) never erases what is stored.
+    contactUpsert: db.prepare(`INSERT INTO contacts (jid, saved_name, notify_name, business_name, is_group, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (jid) DO UPDATE SET
+        saved_name    = COALESCE(excluded.saved_name, contacts.saved_name),
+        notify_name   = COALESCE(excluded.notify_name, contacts.notify_name),
+        business_name = COALESCE(excluded.business_name, contacts.business_name),
+        is_group = excluded.is_group, updated_at = excluded.updated_at`),
     contactGet: db.prepare('SELECT * FROM contacts WHERE jid = ?'),
-    contactSearch: db.prepare(`SELECT * FROM contacts WHERE name LIKE ? ESCAPE '\\' ORDER BY is_group, name LIMIT ?`),
+    contactSearch: db.prepare(`SELECT jid, name, is_group FROM contacts
+      WHERE name LIKE :q ESCAPE '\\' OR saved_name LIKE :q ESCAPE '\\'
+         OR notify_name LIKE :q ESCAPE '\\' OR business_name LIKE :q ESCAPE '\\'
+      ORDER BY is_group, name LIMIT :limit`),
     authGet: db.prepare('SELECT value FROM auth_kv WHERE key = ?'),
     authSet: db.prepare('INSERT INTO auth_kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value'),
     authDel: db.prepare('DELETE FROM auth_kv WHERE key = ?'),
@@ -207,16 +236,32 @@ export function openDb(file, { now = Date.now } = {}) {
     upsertMany(list) {
       if (!list.length) return;
       tx(() => {
-        for (const c of list) stmt.contactUpsert.run(c.jid, c.name, c.isGroup ? 1 : 0, now());
+        for (const c of list) {
+          stmt.contactUpsert.run(
+            c.jid,
+            cleanName(c.savedName ?? c.name), // `name` = the name you gave it (or a group's subject)
+            cleanName(c.notifyName),
+            cleanName(c.businessName),
+            c.isGroup ? 1 : 0,
+            now(),
+          );
+        }
       });
     },
     get(jid) {
       const row = stmt.contactGet.get(jid);
-      return row && { jid: row.jid, name: row.name, isGroup: row.is_group === 1 };
+      return row && {
+        jid: row.jid,
+        name: row.name,
+        isGroup: row.is_group === 1,
+        savedName: row.saved_name,
+        notifyName: row.notify_name,
+        businessName: row.business_name,
+      };
     },
     search(query, limit = 30) {
-      const like = `%${String(query).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      return stmt.contactSearch.all(like, limit).map((r) => ({ jid: r.jid, name: r.name, isGroup: r.is_group === 1 }));
+      const q = `%${String(query).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      return stmt.contactSearch.all({ q, limit }).map((r) => ({ jid: r.jid, name: r.name, isGroup: r.is_group === 1 }));
     },
   };
 

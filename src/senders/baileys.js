@@ -7,6 +7,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   generateMessageIDV2,
   isJidGroup,
+  isPnUser,
   jidNormalizedUser,
   makeCacheableSignalKeyStore,
 } from 'baileys';
@@ -144,12 +145,18 @@ export class BaileysSender extends EventEmitter {
     }, delay);
   }
 
+  // Baileys sends partial contacts: `name` is the address-book name, `notify` the profile name,
+  // `verifiedName` the business name. Each is stored on its own; a missing one is left alone.
   saveContacts(list = []) {
     const rows = [];
     for (const c of list) {
-      const name = c.name || c.notify || c.verifiedName;
-      const jid = c.phoneNumber || c.id;
-      if (name && jid && !isJidGroup(jid)) rows.push({ jid: jidNormalizedUser(jid), name, isGroup: false });
+      const raw = c.phoneNumber || c.id;
+      if (!raw || isJidGroup(raw)) continue;
+      const jid = jidNormalizedUser(raw);
+      const hasName = [c.name, c.notify, c.verifiedName].some((n) => typeof n === 'string' && n.trim());
+      // Without a name, only a phone-number jid can be shown (as +digits).
+      if (!jid || (!hasName && !isPnUser(jid))) continue;
+      rows.push({ jid, savedName: c.name, notifyName: c.notify, businessName: c.verifiedName, isGroup: false });
     }
     this.db.contacts.upsertMany(rows);
   }
