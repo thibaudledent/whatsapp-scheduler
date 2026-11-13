@@ -39,9 +39,15 @@ after(() => {
 });
 
 test('health check is public', async () => {
-  const res = await fetch(`${locked.base}/healthz`);
+  let res = await fetch(`${locked.base}/healthz`);
   assert.equal(res.status, 200);
-  assert.equal((await res.json()).ok, true);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  res = await fetch(`${locked.base}/api/login`, json({ password: PASSWORD }));
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+  res = await fetch(`${locked.base}/healthz`, { headers: { Cookie: cookie } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, whatsapp: locked.sender.state.status, pending: 0 });
 });
 
 // fetch() won't let us override Host, so use a raw request.

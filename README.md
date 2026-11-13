@@ -93,7 +93,8 @@ HTTPS in front (for example Caddy: `reverse_proxy localhost:3737`), then set `TR
 and `ALLOWED_HOSTS=your.domain`. Data lives in the `scheduler-data` volume, so back it up.
 It contains your WhatsApp session.
 
-Health check: `GET /healthz` returns `{ ok, whatsapp, pending }`.
+Health check: `GET /healthz` always returns 200. Without a session it returns only `{ ok: true }`;
+signed in (or with no `ADMIN_PASSWORD`) it returns `{ ok, whatsapp, pending }`.
 
 ## Configuration
 
