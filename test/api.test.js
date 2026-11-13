@@ -204,18 +204,33 @@ test('contact search by digits ignores @lid and group ids', async (t) => {
   assert.deepEqual(await search('120363'), []);
 });
 
-test('an empty query returns the 30 most recently updated contacts, people before groups', async (t) => {
-  const rows = [];
-  for (let i = 1; i <= 25; i++) rows.push({ jid: `${1000 + i}@s.whatsapp.net`, savedName: `Person ${i}` });
-  for (let i = 1; i <= 10; i++) rows.push({ jid: `${2000 + i}@g.us`, name: `Group ${i}`, isGroup: true });
-  const search = await withContacts(t, rows); // groups were updated last
+// Builds rows in update order: each row is newer than the ones before it.
+const people = (n, base = 1000) => Array.from({ length: n }, (_, i) => ({ jid: `${base + i + 1}@s.whatsapp.net`, savedName: `Person ${i + 1}` }));
+const groups = (n, base = 2000) => Array.from({ length: n }, (_, i) => ({ jid: `${base + i + 1}@g.us`, name: `Group ${i + 1}`, isGroup: true }));
+const newestFirst = (rows, count = rows.length) => rows.map((r) => r.jid).reverse().slice(0, count);
 
-  const expected = [];
-  for (let i = 25; i >= 6; i--) expected.push(`${1000 + i}@s.whatsapp.net`); // 20 newest people
-  for (let i = 10; i >= 1; i--) expected.push(`${2000 + i}@g.us`); // then all 10 groups
+test('an empty query lists people first, newest first, then fills up with the newest groups', async (t) => {
+  const p = people(25);
+  const g = groups(10);
+  const search = await withContacts(t, [...p, ...g]); // groups were updated last
+  const expected = [...newestFirst(p), ...newestFirst(g, 5)];
   assert.deepEqual(jids(await search('')), expected);
   assert.deepEqual(jids(await search('   ')), expected);
   assert.deepEqual(jids(await search(undefined)), expected);
+});
+
+test('an empty query shows every person even when there are more than 30 newer groups', async (t) => {
+  const p = people(3);
+  const g = groups(35);
+  const search = await withContacts(t, [...p, ...g]); // all 35 groups are newer than the people
+  assert.deepEqual(jids(await search('')), [...newestFirst(p), ...newestFirst(g, 27)]);
+});
+
+test('an empty query with more than 30 people shows the 30 newest people and no groups', async (t) => {
+  const p = people(32);
+  const g = groups(5);
+  const search = await withContacts(t, [...g, ...p]);
+  assert.deepEqual(jids(await search('')), newestFirst(p, 30));
 });
 
 test('contact search treats LIKE wildcards and quotes literally', async (t) => {

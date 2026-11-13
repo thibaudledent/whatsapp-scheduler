@@ -193,10 +193,9 @@ export function openDb(file, { now = Date.now } = {}) {
          OR (:digits IS NOT NULL AND jid LIKE '%@s.whatsapp.net'
              AND substr(jid, 1, instr(jid, '@') - 1) LIKE :digits ESCAPE '\\')
       ORDER BY is_group, name LIMIT :limit`),
-    // The most recently updated contacts, then people before groups.
-    contactRecent: db.prepare(`SELECT jid, name, is_group FROM
-      (SELECT jid, name, is_group, updated_at FROM contacts ORDER BY updated_at DESC, jid LIMIT :limit)
-      ORDER BY is_group, updated_at DESC, jid`),
+    // People first (newest first); groups only fill the slots people leave free.
+    contactRecent: db.prepare(`SELECT jid, name, is_group FROM contacts
+      ORDER BY is_group, updated_at DESC, jid LIMIT :limit`),
     authGet: db.prepare('SELECT value FROM auth_kv WHERE key = ?'),
     authSet: db.prepare('INSERT INTO auth_kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value'),
     authDel: db.prepare('DELETE FROM auth_kv WHERE key = ?'),
