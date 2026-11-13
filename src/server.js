@@ -58,7 +58,9 @@ export function createApp({ config, db, sender, scheduler, logger, now = Date.no
     next();
   });
 
+  // Always 200 so the Docker HEALTHCHECK (no cookie) passes; details only for signed-in users.
   app.get('/healthz', (req, res) => {
+    if (!auth.isAuthenticated(req)) return res.json({ ok: true });
     res.json({ ok: true, whatsapp: sender.state.status, pending: db.messages.pendingCount() });
   });
 
