@@ -205,6 +205,23 @@ test('send now works for failed messages and does not auto-retry', async () => {
   assert.equal(after.status, 'sent');
 });
 
+test('send now goes out under a fresh WhatsApp id, not the failed attempt\'s', async () => {
+  setup({ maxAttempts: 1 });
+  const m = schedule();
+  sender.failWith = new Error('timed out');
+  await scheduler.tick();
+  const failed = db.messages.get(m.id);
+  assert.equal(failed.status, 'failed');
+  assert.ok(failed.waId);
+
+  sender.failWith = null;
+  const after = await scheduler.sendNow(m.id);
+  assert.equal(after.status, 'sent');
+  assert.equal(sender.sent.length, 1);
+  assert.notEqual(sender.sent[0].messageId, failed.waId);
+  assert.equal(after.waId, sender.sent[0].messageId);
+});
+
 test('send now refuses messages already sent', async () => {
   const m = schedule();
   await scheduler.tick();

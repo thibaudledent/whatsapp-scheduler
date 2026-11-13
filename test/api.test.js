@@ -157,3 +157,19 @@ test('unknown API routes return JSON 404', async () => {
   const res = await fetch(`${open.base}/api/nope`);
   assert.equal(res.status, 404);
 });
+
+test('editing a message clears its WhatsApp id so it goes out under a fresh one', async () => {
+  const app = await start();
+  try {
+    const sendAt = new Date(Date.now() + 3600_000).toISOString();
+    const created = await (await fetch(`${app.base}/api/messages`, json({ to: '+966 50 000 0000', body: 'Hello', sendAt }))).json();
+    // As if an earlier attempt timed out and the message is waiting to retry.
+    app.db.messages.update(created.id, { waId: 'OLD1', attempts: 1, error: 'timed out' });
+
+    const res = await fetch(`${app.base}/api/messages/${created.id}`, { ...json({ to: created.to, body: 'Edited', sendAt }), method: 'PUT' });
+    assert.equal(res.status, 200);
+    assert.equal(app.db.messages.get(created.id).waId, null);
+  } finally {
+    app.server.close();
+  }
+});

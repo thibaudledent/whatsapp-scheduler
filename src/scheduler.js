@@ -158,8 +158,9 @@ export class Scheduler {
     if (!this.sender.isReady()) throw new PermanentError('WhatsApp is not connected.');
     if (m.status !== 'pending') this.db.messages.update(id, { status: 'pending', attempts: 0, retryAt: null });
     if (!this.db.messages.claim(id)) throw new PermanentError('Message is being sent right now.');
-    // Manual sends shouldn't trigger automatic retries.
-    const claimed = this.db.messages.update(id, { attempts: this.config.maxAttempts });
+    // Manual sends shouldn't trigger automatic retries, and go out under a fresh id
+    // (only automatic retries reuse the earlier attempt's id).
+    const claimed = this.db.messages.update(id, { attempts: this.config.maxAttempts, waId: null });
     await this.deliver(claimed);
     return this.db.messages.get(id);
   }
