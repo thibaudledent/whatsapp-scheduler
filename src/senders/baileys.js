@@ -187,7 +187,7 @@ export class BaileysSender extends EventEmitter {
 
   async send(jid, text, { messageId } = {}) {
     if (!this.isReady()) throw new Error('WhatsApp is not connected.');
-    // Rows created in desktop mode (or imported) store bare phone digits.
+    // Rows that store bare phone digits (imported or legacy) are resolved here.
     if (!jid.includes('@')) jid = (await this.resolveRecipient(jid)).jid;
     const msg = await this.sock.sendMessage(jid, { text }, { messageId });
     return msg?.key?.id;

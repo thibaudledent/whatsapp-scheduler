@@ -67,7 +67,6 @@ async function refreshStatus() {
 
 function renderStatus() {
   const s = status.status;
-  const desktop = status.mode === 'desktop';
   const labels = {
     starting: 'Starting…',
     qr: 'Not linked yet',
@@ -75,14 +74,14 @@ function renderStatus() {
     logged_out: 'Unlinked',
     error: 'Problem connecting',
     offline: 'Scheduler is not running',
-    ready: desktop ? 'Using WhatsApp Desktop' : 'Connected',
+    ready: 'Connected',
   };
   $('conn').hidden = false;
   $('conn-text').textContent = labels[s] || s;
   $('conn').className = 'conn' + (s === 'ready' ? ' ready' : ['error', 'offline', 'logged_out'].includes(s) ? ' bad' : '');
 
-  const needsLink = !desktop && ['qr', 'logged_out'].includes(s);
-  $('link').hidden = s === 'ready' || s === 'disconnected' || (desktop && s !== 'error');
+  const needsLink = ['qr', 'logged_out'].includes(s);
+  $('link').hidden = s === 'ready' || s === 'disconnected';
   $('qr').hidden = !(needsLink && status.qr);
   if (status.qr) $('qr').src = status.qr;
   $('link-text').hidden = !needsLink;
@@ -95,13 +94,8 @@ function renderStatus() {
   }
   $('pair-result').hidden = !status.pairingCode;
 
-  if (desktop) {
-    $('to').placeholder = 'Phone number with country code, e.g. +966 50 123 4567';
-    $('me').textContent = 'Sending through WhatsApp Desktop on this PC. Keep it signed in and Windows unlocked.';
-  } else {
-    $('me').textContent = status.me ? `Sending as ${status.me.name} (+${status.me.number})` : '';
-  }
-  $('unlink').hidden = desktop || s !== 'ready';
+  $('me').textContent = status.me ? `Sending as ${status.me.name} (+${status.me.number})` : '';
+  $('unlink').hidden = s !== 'ready';
 
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   $('tz-note').hidden = !status.timezone || status.timezone === browserTz;
@@ -142,7 +136,7 @@ async function updateSuggestions() {
   const q = $('to').value;
   const seq = ++searchSeq;
   const list = looksLikePhone(q) ? [phoneSuggestion(q)] : [];
-  if (q.trim() && status.mode !== 'desktop' && !looksLikePhone(q)) {
+  if (q.trim() && !looksLikePhone(q)) {
     try {
       const found = await api(`/api/contacts?q=${encodeURIComponent(q.trim())}`);
       if (seq !== searchSeq) return; // a newer keystroke won
