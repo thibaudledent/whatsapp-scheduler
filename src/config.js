@@ -16,8 +16,7 @@ export function loadConfig(overrides = {}) {
     host: env.HOST || '127.0.0.1',
     dataDir: path.resolve(env.DATA_DIR || path.join(root, 'data')),
     publicDir: path.join(root, 'public'),
-    // baileys: own linked-device session (works headless, groups, receipts)
-    // desktop: drives the WhatsApp Desktop app signed in on this Windows PC
+    // baileys: own linked-device session (works headless, groups, receipts). The only transport for now.
     sender: env.SENDER || 'baileys',
     timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
     adminPassword: env.ADMIN_PASSWORD || '',
@@ -39,11 +38,8 @@ export function loadConfig(overrides = {}) {
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 
 function validate(config) {
-  if (!['baileys', 'desktop'].includes(config.sender)) {
-    throw new Error(`SENDER must be "baileys" or "desktop" (got "${config.sender}").`);
-  }
-  if (config.sender === 'desktop' && process.platform !== 'win32') {
-    throw new Error('SENDER=desktop only works on Windows with WhatsApp Desktop installed.');
+  if (config.sender !== 'baileys') {
+    throw new Error(`SENDER must be "baileys" (got "${config.sender}").`);
   }
   // Anyone who reaches the page can message as you, so a password is mandatory off-localhost.
   if (!LOOPBACK.has(config.host) && !config.adminPassword) {
